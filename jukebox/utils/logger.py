@@ -5,8 +5,15 @@ from datetime import date
 import os
 import sys
 
+
 def def_tqdm(x):
-    return tqdm(x, leave=True, file=sys.stdout, bar_format="{n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]")
+    return tqdm(
+        x,
+        leave=True,
+        file=sys.stdout,
+        bar_format="{n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]",
+    )
+
 
 def get_range(x):
     if dist.get_rank() == 0:
@@ -14,24 +21,27 @@ def get_range(x):
     else:
         return x
 
+
 def init_logging(hps, local_rank, rank):
     logdir = f"{hps.local_logdir}/{hps.name}"
     if local_rank == 0:
         if not os.path.exists(logdir):
             os.makedirs(logdir)
-        with open(logdir + 'argv.txt', 'w') as f:
-            f.write(hps.argv + '\n')
+        with open(logdir + "argv.txt", "w") as f:
+            f.write(hps.argv + "\n")
         print("Logging to", logdir)
     logger = Logger(logdir, rank)
     metrics = Metrics()
-    logger.add_text('hps', str(hps))
+    logger.add_text("hps", str(hps))
     return logger, metrics
+
 
 def get_name(hps):
     name = ""
     for key, value in hps.items():
         name += f"{key}_{value}_"
     return name
+
 
 def average_metrics(_metrics):
     metrics = {}
@@ -40,7 +50,8 @@ def average_metrics(_metrics):
             if key not in metrics:
                 metrics[key] = []
             metrics[key].append(val)
-    return {key: sum(vals)/len(vals) for key, vals in metrics.items()}
+    return {key: sum(vals) / len(vals) for key, vals in metrics.items()}
+
 
 class Metrics:
     def __init__(self):
@@ -70,10 +81,12 @@ class Metrics:
         self.sum = {}
         self.n = {}
 
+
 class Logger:
     def __init__(self, logdir, rank):
         if rank == 0:
             from tensorboardX import SummaryWriter
+
             self.sw = SummaryWriter(f"{logdir}/logs")
         self.iters = 0
         self.rank = rank
@@ -84,8 +97,9 @@ class Logger:
         self.iters += 1
 
     def flush(self):
-        if self.rank == 0:
-            self.sw.flush()
+        # if self.rank == 0:
+        #     self.sw.flush()
+        pass
 
     def add_text(self, tag, text):
         if self.rank == 0:
@@ -95,7 +109,12 @@ class Logger:
         if self.rank == 0:
             for i in range(min(len(auds), max_log)):
                 if max_len:
-                    self.sw.add_audio(f"{i}/{tag}", auds[i][:max_len * sample_rate], self.iters, sample_rate)
+                    self.sw.add_audio(
+                        f"{i}/{tag}",
+                        auds[i][: max_len * sample_rate],
+                        self.iters,
+                        sample_rate,
+                    )
                 else:
                     self.sw.add_audio(f"{i}/{tag}", auds[i], self.iters, sample_rate)
 
@@ -134,7 +153,7 @@ class Logger:
     def add_reduce_scalar(self, tag, layer, val):
         if self.iters % 100 == 0:
             with t.no_grad():
-                val = val.float().norm()/float(val.numel())
+                val = val.float().norm() / float(val.numel())
             work = dist.reduce(val, 0, async_op=True)
             self.works.append((tag, layer, val, work))
 
@@ -142,6 +161,6 @@ class Logger:
         for tag, layer, val, work in self.works:
             work.wait()
             if self.rank == 0:
-                val = val.item()/dist.get_world_size()
+                val = val.item() / dist.get_world_size()
                 self.lw[layer].add_scalar(tag, val, self.iters)
         self.works = []
